@@ -47,6 +47,16 @@ build_native_bootstrap() {
   echo "  OCAMLLIB: ${OCAMLLIB}"
   echo "  LIBRARY_PATH: ${LIBRARY_PATH}"
 
+  # dune >= 3.24 keeps the boot pretty-printer in boot/pps.mll and generates
+  # boot/pps.ml with ocamllex before compiling; see the modules list and the
+  # ocamllex call in boot/bootstrap.ml.
+  local boot_modules="boot/types.ml boot/libs.ml boot/duneboot.ml"
+  if [ -f boot/pps.mll ]; then
+    ocamllex -q -o boot/pps.ml boot/pps.mll
+    boot_modules="boot/pps.ml ${boot_modules}"
+  fi
+  echo "  boot modules: ${boot_modules}"
+
   if is_macos; then
     ocamlc -verbose -output-complete-exe -intf-suffix .dummy -g \
       -cclib "${target_lib}/libzstd.dylib" \
@@ -54,7 +64,7 @@ build_native_bootstrap() {
       -cclib "-L${BUILD_PREFIX}/lib/ocaml" \
       -cclib "-Wl,-rpath,${target_lib}" \
       -o ./_native_duneboot \
-      -I boot -I +unix unix.cma boot/types.ml boot/libs.ml boot/duneboot.ml
+      -I boot -I +unix unix.cma ${boot_modules}
   else
     ocamlc -output-complete-exe -intf-suffix .dummy -g \
       -cclib "-L${target_lib}" \
@@ -62,7 +72,7 @@ build_native_bootstrap() {
       -cclib "-L${BUILD_PREFIX}/lib/ocaml" \
       -cclib "-Wl,-rpath,${target_lib}" \
       -o ./_native_duneboot \
-      -I boot -I +unix unix.cma boot/types.ml boot/libs.ml boot/duneboot.ml
+      -I boot -I +unix unix.cma ${boot_modules}
   fi
 }
 
