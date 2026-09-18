@@ -41,8 +41,20 @@ fi
 
 # Set install prefix
 if is_non_unix; then
+  # BUILD_PREFIX is Windows-form (D:\...). Interpolating it into a colon
+  # separated PATH severs the drive letter, leaving entries like
+  # \bld\...\build_env/Library/bin that resolve only by accident against the
+  # current drive. make does its own PATH search for simple recipe lines and
+  # does not resolve them at all. Convert to POSIX form before building PATH.
+  if command -v cygpath >/dev/null 2>&1; then
+    BUILD_PREFIX_POSIX="$(cygpath -u "${BUILD_PREFIX}")"
+  else
+    _bp="${BUILD_PREFIX//\\//}"
+    BUILD_PREFIX_POSIX="/${_bp%%:*}${_bp#*:}"
+  fi
+  export BUILD_PREFIX_POSIX
   export DUNE_INSTALL_PREFIX="${PREFIX}/Library"
-  export PATH="${BUILD_PREFIX}/bin:${BUILD_PREFIX}/Library/bin:${PATH}"
+  export PATH="${BUILD_PREFIX_POSIX}/bin:${BUILD_PREFIX_POSIX}/Library/bin:${PATH}"
 else
   export DUNE_INSTALL_PREFIX="${PREFIX}"
 fi
@@ -63,7 +75,33 @@ if is_cross_compile; then
 
 elif is_non_unix; then
   echo "=== non-unix build ==="
-  export PATH="${BUILD_PREFIX}/Library/mingw-w64/bin:${BUILD_PREFIX}/Library/bin:${BUILD_PREFIX}/bin:${PATH}"
+  export PATH="${BUILD_PREFIX_POSIX}/Library/mingw-w64/bin:${BUILD_PREFIX_POSIX}/Library/bin:${BUILD_PREFIX_POSIX}/bin:${PATH}"
+
+  # A long PATH reaches cmd.exe children EMPTY rather than truncated, so every
+  # command they try to resolve fails. Measured on this lane: at 7915 chars
+  # `cmd /c "echo %PATH%"` printed nothing and even `where` was unresolvable; at
+  # 5064 both work. The exact cutoff is somewhere between those two and is NOT
+  # the 8191 figure often quoted for command lines. dune's Makefile runs `ocaml
+  # boot/bootstrap.ml`, whose Sys.command reaches cmd.exe, so the bootstrap was
+  # the only step that noticed. Dedupe, keeping the first occurrence of each
+  # entry; PATH arrives with build_env six times over and the VS block twice.
+  echo "DIAG: PATH length before dedupe = ${#PATH}"
+  _dedup_path=""
+  _seen_path=":"
+  while IFS= read -r _entry; do
+    [ -n "${_entry}" ] || continue
+    case "${_seen_path}" in
+      *":${_entry}:"*) continue ;;
+    esac
+    _seen_path="${_seen_path}${_entry}:"
+    if [ -z "${_dedup_path}" ]; then
+      _dedup_path="${_entry}"
+    else
+      _dedup_path="${_dedup_path}:${_entry}"
+    fi
+  done <<< "$(printf '%s' "${PATH}" | tr ':' '\n')"
+  export PATH="${_dedup_path}"
+  echo "DIAG: PATH length after dedupe = ${#PATH}"
 
   # Hide MSYS2 coreutils 'link' so OCaml finds MSVC's 'link.exe' for linking
   # MSYS2's link creates hard links; MSVC's link.exe is the actual linker
@@ -83,6 +121,33 @@ elif is_non_unix; then
   #  patch -p1 < "${RECIPE_DIR}/patches/xxxx-fix-dune-which-double-exe-on-windows.patch"
   #fi
 
+  # DIAG: probe ocaml tool resolution before make (win msvc lane investigation)
+  echo "DIAG: BUILD_PREFIX_POSIX=${BUILD_PREFIX_POSIX}"
+  echo "DIAG: PATH=${PATH}"
+  echo "DIAG: command -v ocamllex -> $(command -v ocamllex 2>&1 || echo NOTFOUND)"
+  echo "DIAG: command -v ocamlc -> $(command -v ocamlc 2>&1 || echo NOTFOUND)"
+  ls -la "${BUILD_PREFIX}/Library/bin/"ocaml* 2>&1 | head -40 || echo "DIAG: no ocaml* in BUILD_PREFIX/Library/bin"
+  echo "DIAG: make -> $(command -v make 2>&1 || echo NOTFOUND)"
+  make --version 2>&1 | head -2 || echo "DIAG: make --version failed"
+  # cmd.exe probes. MSYS2 rewrites a lone /c argument to C:/, so each call needs
+  # MSYS2_ARG_CONV_EXCL inline with a plain /c. Do NOT export the variable and do
+  # NOT use //c - together they cancel and cmd starts interactively instead.
+  echo "DIAG: --- cmd PATH head ---"
+  MSYS2_ARG_CONV_EXCL='*' cmd.exe /c "echo %PATH%" 2>&1 | tr ';' '\n' | head -12 || echo "DIAG: cmd PATH probe failed"
+  echo "DIAG: --- cmd where ocamllex ---"
+  MSYS2_ARG_CONV_EXCL='*' cmd.exe /c "where ocamllex" 2>&1 | head -5 || echo "DIAG: cmd where ocamllex nonzero"
+  echo "DIAG: --- cmd direct run ---"
+  MSYS2_ARG_CONV_EXCL='*' cmd.exe /c "ocamllex -version" 2>&1 | head -3 || echo "DIAG: cmd direct run nonzero"
+  echo "DIAG: --- PATHEXT check ---"
+  echo "DIAG: bash PATHEXT=${PATHEXT:-UNSET}"
+  MSYS2_ARG_CONV_EXCL='*' cmd.exe /c "echo %PATHEXT%" 2>&1 | head -2 || echo "DIAG: cmd PATHEXT probe failed"
+  echo "DIAG: --- cmd where ocamllex.exe ---"
+  MSYS2_ARG_CONV_EXCL='*' cmd.exe /c "where ocamllex.exe" 2>&1 | head -3 || echo "DIAG: cmd where ocamllex.exe nonzero"
+  echo "DIAG: --- probes end ---"
+  # Do NOT pass SHELL= here. The install recipe expands to
+  # `dune.exe install --prefix D:\...\h_env/Library dune`, and running that
+  # through bash strips the backslashes, so dune installs to a drive-relative
+  # path under SRC_DIR and exits 0 having written nothing where we expect it.
   make release
   make PREFIX="${DUNE_INSTALL_PREFIX}" install
 else
@@ -125,11 +190,48 @@ echo "Wrote OCaml build version ${OCAML_BUILD_VERSION} to ${TEST_FILES_DIR}/ocam
 
 mkdir -p "${DUNE_INSTALL_PREFIX}"/share/man/man{1,5} || { echo "Cannot create MANDIR"; exit 1; }
 
-mv "${DUNE_INSTALL_PREFIX}"/man/man1/* "${DUNE_INSTALL_PREFIX}/share/man/man1/"
-mv "${DUNE_INSTALL_PREFIX}"/man/man5/* "${DUNE_INSTALL_PREFIX}/share/man/man5/"
+# DIAG: dune install exits 0 but nothing lands under DUNE_INSTALL_PREFIX. Find out
+# where it actually wrote, and how the prefix string is spelled.
+echo "DIAG: PREFIX=${PREFIX}"
+echo "DIAG: DUNE_INSTALL_PREFIX=${DUNE_INSTALL_PREFIX}"
+echo "DIAG: SRC_DIR=${SRC_DIR}"
+echo "DIAG: anything named dune* under PREFIX"
+find "${PREFIX}" -maxdepth 4 -name 'dune*' 2>&1 | head -30 || true
+echo "DIAG: PREFIX dirs to depth 2"
+find "${PREFIX}" -maxdepth 2 -type d 2>&1 | head -30 || true
+echo "DIAG: anything named dune.exe under SRC_DIR"
+find "${SRC_DIR}" -maxdepth 4 -name 'dune.exe' 2>&1 | head -10 || true
+echo "DIAG: contents of dune.install if present"
+head -30 "${SRC_DIR}/dune.install" 2>&1 || echo "DIAG: no dune.install in SRC_DIR"
+
+# DIAG: dune install did not create man/man1 on win_64. Find out what it did make.
+echo "DIAG: install dirs under DUNE_INSTALL_PREFIX"
+find "${DUNE_INSTALL_PREFIX}" -maxdepth 3 -type d 2>&1 | head -40 || true
+echo "DIAG: man-page files anywhere under DUNE_INSTALL_PREFIX"
+find "${DUNE_INSTALL_PREFIX}" \( -name '*.1' -o -name '*.5' \) 2>&1 | head -20 || true
+
+# dune's own install manifest puts man pages under a top-level man/manN, but the
+# package_contents test expects share/man/manN. Move them where they exist.
+# Do NOT use `compgen -G` for the existence check: on win_64 MSYS bash it returns
+# false even when the glob demonstrably matches, which stranded 38 man pages.
+shopt -s nullglob
+for _mansec in 1 5; do
+  _man_pages=("${DUNE_INSTALL_PREFIX}/man/man${_mansec}"/*)
+  if (( ${#_man_pages[@]} )); then
+    mv "${_man_pages[@]}" "${DUNE_INSTALL_PREFIX}/share/man/man${_mansec}/"
+  else
+    echo "DIAG: no man pages at ${DUNE_INSTALL_PREFIX}/man/man${_mansec}"
+  fi
+done
+shopt -u nullglob
 
 mkdir -p "${DUNE_INSTALL_PREFIX}/share/emacs/site-lisp/dune" || { echo "Cannot create site-lisp"; exit 1; }
-mv "${DUNE_INSTALL_PREFIX}"/share/emacs/site-lisp/*.el "${DUNE_INSTALL_PREFIX}/share/emacs/site-lisp/dune/" 2>/dev/null || true
+shopt -s nullglob
+_el_files=("${DUNE_INSTALL_PREFIX}"/share/emacs/site-lisp/*.el)
+if (( ${#_el_files[@]} )); then
+  mv "${_el_files[@]}" "${DUNE_INSTALL_PREFIX}/share/emacs/site-lisp/dune/"
+fi
+shopt -u nullglob
 
 # ==============================================================================
 # VERIFY INSTALLATION
