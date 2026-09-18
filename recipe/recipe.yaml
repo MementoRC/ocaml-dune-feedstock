@@ -1,5 +1,5 @@
 context:
-  build_number: 1
+  build_number: 2
   name: ocaml-dune
   version: "3.24.2"
 
@@ -87,9 +87,11 @@ tests:
         python testing/test-dune-config.py
         python testing/test-dune-build.py
         python testing/test-dune-cmi.py
+        python testing/test-dune-activation.py
       files:
         recipe:
           - testing/test_utils.py
+          - testing/test-dune-activation.py
           - testing/test-dune-arch.py
           - testing/test-dune-build.py
           - testing/test-dune-cmi.py
