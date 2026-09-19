@@ -9,6 +9,9 @@ win_64_c_compilergcc and the job still concluded success). To avoid that,
 every test below is run through this single aggregating process, which
 runs all of them, collects each one's exit code, and exits non-zero if
 ANY test failed.
+
+Probes listed in PROBE_ORDER run first and are diagnostic only: their exit
+codes are ignored and can never fail the suite.
 """
 
 import os
@@ -25,11 +28,23 @@ TEST_ORDER = [
     "test-dune-activation.py",
 ]
 
+PROBE_ORDER = [
+    "probe-dune-cache.py",
+]
+
 
 def run_tests() -> int:
     """Run each test in TEST_ORDER and return 0 if all passed, else 1."""
     here = os.path.dirname(os.path.abspath(__file__))
     results = []
+
+    for name in PROBE_ORDER:
+        print(f"=== running probe {name} ===")
+        path = os.path.join(here, name)
+        if os.path.isfile(path):
+            subprocess.run([sys.executable, path])
+        else:
+            print(f"[WARN] probe {name} not found at {path}")
 
     for name in TEST_ORDER:
         print(f"=== running {name} ===")

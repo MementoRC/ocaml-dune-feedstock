@@ -107,6 +107,7 @@ tests:
       recipe:
         - testing/test_utils.py
         - testing/run_all_tests.py
+        - testing/probe-dune-cache.py
         - testing/test-dune-activation.py
         - testing/test-dune-arch.py
         - testing/test-dune-build.py

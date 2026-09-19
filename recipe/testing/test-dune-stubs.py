@@ -92,6 +92,14 @@ def run_build_test(build_cmd, run_cmd_args, expected_output):
 def main():
     print("=== Dune Toolchain Path Tests (C stubs, ocamllex) ===")
 
+    # dune's cache init can crash on windows before anything is compiled:
+    # Code_error out of create_cache_directories, seen here on the runner's
+    # 8.3 short-name TEMP path. The other dune tests build in the same kind
+    # of tempdir without tripping it, so the trigger is not fully pinned
+    # down. Each test below builds once in a throwaway tempdir, so the cache
+    # buys nothing here either way.
+    os.environ["DUNE_CACHE"] = "disabled"
+
     apply_ocaml_530_workaround()
 
     test_dir = tempfile.mkdtemp(prefix="dune_stubs_")
