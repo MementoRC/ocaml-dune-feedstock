@@ -1,5 +1,5 @@
 context:
-  build_number: 8
+  build_number: 9
   name: ocaml-dune
   version: "3.24.2"
 
@@ -33,11 +33,10 @@ build:
 
 requirements:
   build:
-    - if: target_platform == "win-arm64"
+    - ${{ compiler("ocaml") }}
+    - if: not unix
       then:
-        - ocaml_${{ target_platform }} ${{ ocaml_compiler_version }}.* ${{ c_toolchain }}[build_number=">=12"]
-      else:
-        - ocaml_${{ target_platform }} ${{ ocaml_compiler_version }}.* ${{ c_toolchain }}
+        - ocaml_${{ target_platform }} * ${{ c_toolchain }}
     - if: not unix and c_compiler == "gcc"
       then:
         - ${{ stdlib("m2w64_c") }}
@@ -59,11 +58,7 @@ requirements:
       then:
         - zstd
   run:
-    - if: target_platform == "win-arm64"
-      then:
-        - ocaml_${{ target_platform }} >=${{ ocaml_compiler_version }} ${{ c_toolchain }}[build_number=">=12"]
-      else:
-        - ocaml_${{ target_platform }} >=${{ ocaml_compiler_version }} ${{ c_toolchain }}
+    - ocaml_${{ target_platform }} >=${{ ocaml_compiler_version }} ${{ c_toolchain }}
   ignore_run_exports:
     by_name:
       - zstd
