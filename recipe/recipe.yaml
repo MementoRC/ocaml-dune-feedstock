@@ -40,14 +40,17 @@ requirements:
     - if: not unix and c_compiler == "gcc"
       then:
         - ${{ stdlib("m2w64_c") }}
-    - if: unix or c_compiler == "zig"
+    - if: unix or c_compiler != "gcc"
       then:
         - ${{ stdlib("c") }}
+    - if: not unix and c_compiler == "vs2022"
+      then:
+        - ${{ compiler("c") }}
     - ${{ m2 }}bash >=5.2
     - ${{ m2 }}make
     - if: build_platform != target_platform
       then:
-        - ocaml_${{ build_platform }} ${{ ocaml_compiler_version }}.*
+        - ocaml_${{ build_platform }} ${{ ocaml_compiler_version }}.* ${{ "gcc_*" if target_platform == "win-arm64" else "" }}
         - ocaml-dune
     - if: unix
       then:
