@@ -1,5 +1,5 @@
 context:
-  build_number: 107
+  build_number: 8
   name: ocaml-dune
   version: "3.24.2"
 
@@ -21,7 +21,7 @@ source:
 
 build:
   number: ${{ build_number }}
-  string: ${{ c_compiler ~ "_" if not unix }}h${{ hash }}_experimental_${{ build_number }}
+  string: ${{ c_compiler ~ "_" if not unix }}h${{ hash }}_${{ build_number }}
   script:
     file: build.sh
   dynamic_linking:
@@ -35,7 +35,7 @@ requirements:
   build:
     - if: target_platform == "win-arm64"
       then:
-        - ocaml_${{ target_platform }} ${{ ocaml_compiler_version }}.* ${{ c_toolchain }}[build_number=">=116"]
+        - ocaml_${{ target_platform }} ${{ ocaml_compiler_version }}.* ${{ c_toolchain }}[build_number=">=12"]
       else:
         - ocaml_${{ target_platform }} ${{ ocaml_compiler_version }}.* ${{ c_toolchain }}
     - if: not unix and c_compiler == "gcc"
@@ -61,7 +61,7 @@ requirements:
   run:
     - if: target_platform == "win-arm64"
       then:
-        - ocaml_${{ target_platform }} >=${{ ocaml_compiler_version }} ${{ c_toolchain }}[build_number=">=116"]
+        - ocaml_${{ target_platform }} >=${{ ocaml_compiler_version }} ${{ c_toolchain }}[build_number=">=12"]
       else:
         - ocaml_${{ target_platform }} >=${{ ocaml_compiler_version }} ${{ c_toolchain }}
   ignore_run_exports:
