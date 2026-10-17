@@ -34,23 +34,27 @@ build:
 requirements:
   build:
     - ${{ compiler("ocaml") }}
-    - if: not unix
-      then:
-        - ocaml_${{ target_platform }} ${{ ocaml_compiler_version }}.* ${{ c_toolchain }}
     - if: not unix and c_compiler == "gcc"
       then:
         - ${{ stdlib("m2w64_c") }}
-    - if: unix or c_compiler != "gcc"
-      then:
+      else:
         - ${{ stdlib("c") }}
-    - if: not unix and c_compiler == "vs2022"
+    - if: not unix and c_compiler != "gcc"
       then:
         - ${{ compiler("c") }}
+    - if: not unix
+      then:
+        - ocaml_${{ target_platform }} ${{ ocaml_compiler_version }}.* ${{ c_toolchain }}
     - ${{ m2 }}bash >=5.2
     - ${{ m2 }}make
+    - if: build_platform != target_platform and unix
+      then:
+        - ocaml_${{ build_platform }} ${{ ocaml_compiler_version }}.*
+    - if: build_platform != target_platform and not unix
+      then:
+        - ocaml_${{ build_platform }} ${{ ocaml_compiler_version }}.* gcc_*
     - if: build_platform != target_platform
       then:
-        - ocaml_${{ build_platform }} ${{ ocaml_compiler_version }}.* ${{ "gcc_*" if target_platform == "win-arm64" else "" }}
         - ocaml-dune
     - if: unix
       then:
@@ -110,9 +114,13 @@ tests:
         - ${{ m2 }}file
         - python >=3.9
       run:
-        # No version-suppression left in the test suite, so the OCaml floor
-        # here must be a real run constraint, not a runtime skip.
-        - ocaml-compiler >=${{ ocaml_compiler_version }}
+        - ocaml ${{ ocaml_compiler_version }}.*
+        - if: not unix
+          then:
+            - ocaml_${{ target_platform }} ${{ ocaml_compiler_version }}.* ${{ c_toolchain }}
+        - if: not unix and c_compiler != "gcc"
+          then:
+            - ${{ compiler("c") }}
 
 about:
   license: MIT
