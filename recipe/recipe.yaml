@@ -34,6 +34,11 @@ build:
 requirements:
   build:
     - ${{ compiler("ocaml") }}
+    # dnm: rehearse against ocaml 5.4.1 build 2
+    - ocaml_${{ build_platform }}[version="${{ ocaml_compiler_version }}.*", build_number=">=2"]
+    - if: build_platform != target_platform
+      then:
+        - ocaml_${{ target_platform }}[version="${{ ocaml_compiler_version }}.*", build_number=">=2"]
     - if: not unix and c_compiler == "gcc"
       then:
         - ${{ stdlib("m2w64_c") }}
