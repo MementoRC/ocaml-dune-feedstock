@@ -1,5 +1,5 @@
 context:
-  build_number: 0
+  build_number: 1
   name: ocaml-dune
   version: "3.25.0"
 
@@ -43,6 +43,9 @@ requirements:
             - ${{ stdlib("c") }}
             - ${{ compiler("c") }}
         - ocaml_${{ target_platform }} ${{ ocaml_compiler_version }}.* ${{ c_toolchain }}
+      else:
+        - ${{ stdlib("c") }}
+        - ${{ compiler("c") }}
     - ${{ m2 }}bash >=5.2
     - ${{ m2 }}make
     - if: build_platform != target_platform
