@@ -1,5 +1,5 @@
 context:
-  build_number: 1
+  build_number: 2
   name: ocaml-dune
   version: "3.25.0"
 
@@ -68,6 +68,9 @@ requirements:
         - zstd
   run_constraints:
     - ocaml_${{ target_platform }} >=${{ ocaml_compiler_version }} ${{ c_toolchain }}
+  run_exports:
+    strong_constraints:
+      - ${{ pin_subpackage('ocaml-dune', lower_bound='x.x', upper_bound=None) }}
   ignore_run_exports:
     by_name:
       - zstd
